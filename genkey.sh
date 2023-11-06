@@ -63,6 +63,6 @@ EOF
 	qrencode -t ansiutf8 -r $NAME.conf
 	if [ $MT_CLIENT -eq 1 ] ; then
 		echo "[!] now add peer on router:"
-		echo "/interface wireguard peers add allowed-address=0.0.0.0/0 comment=$NAME interface=wg1 public-key=\"$PUB_KEY\""
+		echo "/interface wireguard peers add allowed-address=0.0.0.0/0 comment=$NAME interface=wg1 public-key=\"$ENDPOINT_PUBLICKEY\""
 	fi
 fi
