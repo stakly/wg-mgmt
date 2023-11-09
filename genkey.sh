@@ -9,34 +9,39 @@ if [ -z "$ADDRESS_NET" ] || [ -z "$FIRST_IP" ] || [ -z "$DNS_SERVERS" ] || [ -z 
 fi
 
 NAME=$1
+if compgen -G "$NAME.*" > /dev/null ; then
+  echo "ERROR: files for \"$NAME\" already exist. Remove it first."
+  exit 1
+fi
+
 echo "[*] generating keys for $NAME..."
 
-if wg genkey | tee $NAME.key | wg pubkey > $NAME.pubkey ; then
-	KEY=`cat $NAME.key`
-	PUB_KEY=`cat $NAME.pubkey`
+if wg genkey | tee "$NAME".key | wg pubkey > "$NAME".pubkey ; then
+	KEY=$(cat "$NAME".key)
+	PUB_KEY=$(cat "$NAME".pubkey)
 	if compgen -G "*.conf" >/dev/null ; then
-		IP=$((`awk '/Address/ {print $3}' *.conf | sort -t . -k 4 -n | tail -n1 | sed -Ee 's/[0-9]+\.[0-9]+\.[0-9]+\.([0-9]+)\/24.*/\1/g'` + 1))
-		if [ ! -z "$ADDRESS_NET_V6" ] ; then
-			IPV6="$((`awk '/Address/ {print $3 $4}' *.conf | grep "${ADDRESS_NET_V6/x/.*}" | sort -t . -k 4 -n | tail -n1 | sed -Ee "s/.*"${ADDRESS_NET_V6/x\\//([0-9]+)\\\/}".*/\1/g"` + 1))"
+		IP=$(($(awk '/Address/ {print $3}' ./*.conf | sort -t . -k 4 -n | tail -n1 | sed -Ee 's/[0-9]+\.[0-9]+\.[0-9]+\.([0-9]+)\/24.*/\1/g') + 1))
+		if [ -n "$ADDRESS_NET_V6" ] ; then
+			IPV6="$(($(awk '/Address/ {print $3 $4}' ./*.conf | grep "${ADDRESS_NET_V6/x/.*}" | sort -t . -k 4 -n | tail -n1 | sed -Ee "s/.*"${ADDRESS_NET_V6/x\\//([0-9]+)\\\/}".*/\1/g") + 1))"
 		fi
 	else
 		echo "[!] no configs, IP address will be $FIRST_IP"
 		IP=$FIRST_IP
-		if [ ! -z "$ADDRESS_NET_V6" ] ; then
+		if [ -n "$ADDRESS_NET_V6" ] ; then
 			IPV6=$FIRST_IP
 		fi
 
 	fi
 	ALLOWIP=${ADDRESS_NET/x*/$IP\/32}
 	IP=${ADDRESS_NET/x/$IP}
-	if [ ! -z "$ADDRESS_NET_V6" ] ; then
+	if [ -n "$ADDRESS_NET_V6" ] ; then
 		#IPV6="$((`awk '/Address/ {print $3 $4}' *.conf | grep "${ADDRESS_NET_V6/x/.*}" | sort -t . -k 4 -n | tail -n1 | sed -Ee "s/.*"${ADDRESS_NET_V6/x\\//([0-9]+)\\\/}".*/\1/g"` + 1))"
 		GWV6=',::/0'
 		ALLOWIPV6=",${ADDRESS_NET_V6/x*/$IPV6\/128}"
 		IPV6=",${ADDRESS_NET_V6/x/$IPV6}"
 	fi
 	echo "[*] generating config $NAME.conf with IP ${IP}${IPV6}"
-	cat >$NAME.conf<<EOF
+	cat >"$NAME".conf<<EOF
 [Interface]
 PrivateKey = $KEY
 Address = ${IP}${IPV6}
@@ -49,7 +54,7 @@ AllowedIPs = 0.0.0.0/0${GWV6}
 EOF
 	if [ -n "$WGCONF" ]; then
 		echo "[*] adding peer to system config $WGCONF"
-		cat >>$WGCONF<<EOF
+		cat >>"$WGCONF"<<EOF
 
 [Peer]
 PublicKey = $PUB_KEY
@@ -59,10 +64,13 @@ EOF
 	fi
 
 	echo "[*] generating qr-code $NAME.png"
-	qrencode -t ansiutf8 -o $NAME.png -r $NAME.conf -t png
-	qrencode -t ansiutf8 -r $NAME.conf
-	if [ $MT_CLIENT -eq 1 ] ; then
-		echo "[!] now add peer on router:"
+	qrencode -t ansiutf8 -o "$NAME".png -r "$NAME".conf -t png
+	qrencode -t ansiutf8 -r "$NAME".conf
+	if [ "$MT_CLIENT" -eq 1 ] ; then
+		echo "[!] add peer on RouterOS router:"
+		echo "/interface wireguard add comment=ZVPN listen-port=$MT_CLIENT_PORT mtu=1420 name=wg1 private-key=\"$KEY\""
 		echo "/interface wireguard peers add allowed-address=0.0.0.0/0 comment=$NAME interface=wg1 public-key=\"$ENDPOINT_PUBLICKEY\""
+		echo "/ip address add address=${IP} interface=wg1"
+		echo "[!] now manually route traffic via wg1"
 	fi
 fi
