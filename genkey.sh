@@ -3,7 +3,7 @@
 
 . ./env
 
-if [ -z "$ADDRESS_NET" ] || [ -z "$FIRST_IP" ] || [ -z "$DNS_SERVERS" ] || [ -z "$ENDPOINT" ] || [ -z "$ENDPOINT_PUBLICKEY" ]; then
+if [ -z "$ADDRESS_NET" ] || [ -z "$FIRST_IP" ] || [ -z "$DNS_SERVERS" ] || [ -z "$ENDPOINT_IP" ] || [ -z "$ENDPOINT_PORT" ] || [ -z "$ENDPOINT_PUBLICKEY" ]; then
 	echo 'ERROR: check environment variables' 
 	exit 2
 fi
@@ -49,7 +49,7 @@ DNS = $DNS_SERVERS
 
 [Peer]
 PublicKey = $ENDPOINT_PUBLICKEY
-Endpoint = $ENDPOINT
+Endpoint = $ENDPOINT_IP:$ENDPOINT_PORT
 AllowedIPs = 0.0.0.0/0${GWV6}
 EOF
 	if [ -n "$WGCONF" ]; then
@@ -60,17 +60,20 @@ EOF
 PublicKey = $PUB_KEY
 AllowedIPs = ${ALLOWIP}${ALLOWIPV6}
 EOF
-		echo "[!] restart wireguard: systemctl restart wg-quick@wg0.service"
+		echo "[!] restarting wireguard: systemctl restart wg-quick@wg0.service"
+		systemctl restart wg-quick@wg0.service
 	fi
 
-	echo "[*] generating qr-code $NAME.png"
-	qrencode -t ansiutf8 -o "$NAME".png -r "$NAME".conf -t png
-	qrencode -t ansiutf8 -r "$NAME".conf
+  if command -v qrencode &>/dev/null ; then
+    echo "[*] generating qr-code $NAME.png"
+    qrencode -t ansiutf8 -o "$NAME".png -r "$NAME".conf -t png
+    qrencode -t ansiutf8 -r "$NAME".conf
+  fi
 	if [ "$MT_CLIENT" -eq 1 ] ; then
 		echo "[!] add peer on RouterOS router:"
-		echo "/interface wireguard add comment=ZVPN listen-port=$MT_CLIENT_PORT mtu=1420 name=wg1 private-key=\"$KEY\""
-		echo "/interface wireguard peers add allowed-address=0.0.0.0/0 comment=$NAME interface=wg1 public-key=\"$ENDPOINT_PUBLICKEY\""
-		echo "/ip address add address=${IP} interface=wg1"
+		echo "  /interface wireguard add comment=ZVPN listen-port=$MT_CLIENT_PORT mtu=1420 name=wg1 private-key=\"$KEY\""
+		echo "  /interface wireguard peers add allowed-address=0.0.0.0/0 comment=$NAME interface=wg1 endpoint-address=$ENDPOINT_IP endpoint-port=$ENDPOINT_PORT public-key=\"$ENDPOINT_PUBLICKEY\""
+		echo "  /ip address add address=$IP interface=wg1"
 		echo "[!] now manually route traffic via wg1"
 	fi
 fi
